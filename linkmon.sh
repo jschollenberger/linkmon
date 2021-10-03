@@ -1,12 +1,18 @@
 #!/bin/bash
 
+# linkmon
+# Link management utility for Allstar
+# https://github.com/jschollenberger/linkmon
 
+# Copyright (C) 2021 Jason Schollenberger
 
+# This utility was created to help automate connecting to, and disconnecting from, Allstar nodes. It is configurable to disconnect from a remote node based on a timer or inactivity based interval.
 
+#This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+#This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+#You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-#readme
-
-
+# ============================================================================================================ #
 # Tuneables for linkmon
 
 # Seconds to sleep between polling asterisk (1 minute default, other values untested)
