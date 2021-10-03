@@ -21,6 +21,9 @@ SLEEP_TIME=60
 # Total inactivity allowed in minutes (3 minute default)
 INACTIVITY_ALLOWANCE=3
 
+# Play a global message before connecting and after disconnecting with information about the link status (default 1)
+ANNOUNCE_LINK=1
+
 # Path to your asterisk binary
 ASTERISK=/usr/sbin/asterisk
 
@@ -29,9 +32,6 @@ ALLSTARENV=/usr/local/etc/allstar.env
 
 # Path to astdb.txt
 ASTDB=/var/log/asterisk/astdb.txt
-
-# Play a global message before connecting and after disconnecting with information about the link status (default 1)
-ANNOUNCE_LINK=1
 
 # Configuration ends here
 # ============================================================================================================ #
