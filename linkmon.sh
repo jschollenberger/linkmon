@@ -21,6 +21,9 @@ SLEEP_TIME=60
 # Total inactivity allowed in minutes (3 minute default)
 INACTIVITY_ALLOWANCE=3
 
+# Reset the inactivity timer when tx time increases (default is disabled and inactivity timer is cumlative)
+RESET_ON_TX=0
+
 # Play a global message before connecting and after disconnecting with information about the link status (default 1)
 ANNOUNCE_LINK=1
 
@@ -171,7 +174,7 @@ seconds_to_minutes() {
 
 
 echo_date "Monitoring temporary transceive link: $TEMPORARY_LINK $TEMPORARY_LINK_INFO"
-echo_date "The link will automatically disconnect after $LINK_TIME minutes at `date -d \"$LINK_TIME minutes\" +'%H:%M'` OR after $INACTIVITY_ALLOWANCE cumulative minutes of inactivity."
+echo_date "The link will automatically disconnect after $LINK_TIME minutes at `date -d \"$LINK_TIME minutes\" +'%H:%M'` OR after $INACTIVITY_ALLOWANCE minutes of inactivity."
 echo
 echo_date "Disconnecting existing outbound links$(disconnect_outbound_links)"
 echo_date "Establishing connection to: $TEMPORARY_LINK..."
@@ -202,6 +205,10 @@ do
         echo_date "TX time increasing: $(seconds_to_timestamp CURRENTTXTIME) > $(seconds_to_timestamp $LASTTXTIME). Link Timer: $LINK_TIMER_MINUTES of $LINK_TIME minutes. Sleeping $SLEEP_TIME seconds..."
         LASTTXTIME=$CURRENTTXTIME
         CURRENTTXTIME=$(get_txtime_seconds)
+        if [[ "$RESET_ON_TX" -eq 1 ]]; then
+        # Reset the inactive minutes to 0 on every tx timer increase
+            INACTIVE_MINUTES=0
+        fi
         sleep $SLEEP_TIME & wait $!
     elif [ "$CURRENTTXTIME" -eq "$LASTTXTIME" ]; then
         ((INACTIVE_MINUTES++))
