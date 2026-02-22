@@ -62,6 +62,7 @@ function ctrl_c() {
 if [[ -z "$1" || -z "$2" ]]; then
     echo "Usage: linkmon.sh <node ID to connect to> <link time in minutes> <optional local node ID>"
     echo "For example, to connect to node 53209 for 60 minutes you would run: linkmon.sh 53209 60"
+    echo "To connect indefinitely, set link time to 0. linkmon will connect then exit: linkmon.sh 53209 0"
     echo "Please specify link to connect to and for how long. Exiting..."
     exit 1
 else
