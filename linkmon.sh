@@ -62,6 +62,7 @@ function ctrl_c() {
 if [[ -z "$1" || -z "$2" ]]; then
     echo "Usage: linkmon.sh <node ID to connect to> <link time in minutes> <optional local node ID>"
     echo "For example, to connect to node 53209 for 60 minutes you would run: linkmon.sh 53209 60"
+    echo "To connect indefinitely, set link time to 0. linkmon will connect then exit: linkmon.sh 53209 0"
     echo "Please specify link to connect to and for how long. Exiting..."
     exit 1
 else
@@ -172,15 +173,26 @@ seconds_to_minutes() {
     echo `echo "$1 / 60" | bc`
 }
 
-
 echo_date "Monitoring temporary transceive link: $TEMPORARY_LINK $TEMPORARY_LINK_INFO"
-echo_date "The link will automatically disconnect after $LINK_TIME minutes at `date -d \"$LINK_TIME minutes\" +'%H:%M'` OR after $INACTIVITY_ALLOWANCE minutes of inactivity."
+
+if [ "$LINK_TIME" = 0 ]; then
+    echo_date "Link duration set to 0 (infinite). Announcing link, connecting, then exiting linkmon."
+else
+    echo_date "The link will automatically disconnect after $LINK_TIME minutes at `date -d \"$LINK_TIME minutes\" +'%H:%M'` OR after $INACTIVITY_ALLOWANCE minutes of inactivity."
+fi
+
 echo
 echo_date "Disconnecting existing outbound links$(disconnect_outbound_links)"
 echo_date "Establishing connection to: $TEMPORARY_LINK..."
 link_connect
 sleep 1 & wait $!
 echo_date "Link Information: $(link_status)"
+
+if [ "$LINK_TIME" = 0 ]; then
+    echo_date "Infinite connection established. Linkmon shutting down..."
+    exit
+fi
+
 echo
 echo_date "Current TX time for Node $LOCALNODE: $(seconds_to_timestamp $CURRENTTXTIME)"
 echo_date "Sleeping $SLEEP_TIME seconds..."
