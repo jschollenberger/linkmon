@@ -48,11 +48,11 @@ if pidof -o %PPID -x "linkmon.sh">/dev/null; then
     exit 1
 fi
 
-# trap ctrl-c and call ctrl_c()
-trap ctrl_c INT
+# trap ctrl-c and termination signals, disconnecting the link before exiting
+trap handle_exit_signal INT TERM
 
-function ctrl_c() {
-    echo_date "ctrl-c pressed. disconnecting link and exiting..."
+function handle_exit_signal() {
+    echo_date "Signal received. Disconnecting link and exiting..."
     link_disconnect
     exit 1
 }
@@ -62,65 +62,78 @@ function ctrl_c() {
 if [[ -z "$1" || -z "$2" ]]; then
     echo "Usage: linkmon.sh <node ID to connect to> <link time in minutes> <optional local node ID>"
     echo "For example, to connect to node 53209 for 60 minutes you would run: linkmon.sh 53209 60"
+    echo "To connect indefinitely, set link time to 0. linkmon will connect then exit: linkmon.sh 53209 0"
     echo "Please specify link to connect to and for how long. Exiting..."
     exit 1
 else
     # Remote node ID
-    TEMPORARY_LINK=$1
+    TEMPORARY_LINK="$1"
     # Time to keep the link connected (minutes)
-    LINK_TIME=$2
+    LINK_TIME="$2"
 fi
 
 # If it's not in the parameter, get local node number from the allstar.env
 
 if [ -z "$3" ]; then
-    if [ -f $ALLSTARENV ] ; then
-        source $ALLSTARENV
-        LOCALNODE=$NODE1
+    if [ -f "$ALLSTARENV" ] ; then
+        source "$ALLSTARENV"
+        LOCALNODE="$NODE1"
     else
         echo "No local node ID provided and missing Allstar environment file ($ALLSTARENV). Exiting..."
         exit 1
     fi
 else
-    LOCALNODE=$3
+    LOCALNODE="$3"
 fi
 
 # Get info about link argument from the astdb
 
-if [ -f $ASTDB ] ; then
-    TEMPORARY_LINK_INFO="- `grep -w $TEMPORARY_LINK $ASTDB | cut -d\| -f 2-4`"
+if [ -f "$ASTDB" ] ; then
+    TEMPORARY_LINK_INFO="- `grep -w "$TEMPORARY_LINK" "$ASTDB" | cut -d\| -f 2-4`"
+fi
+
+# Verify the asterisk binary is present and executable before doing anything else
+
+if [ ! -x "$ASTERISK" ]; then
+    echo "Asterisk binary not found or not executable at $ASTERISK. Check the ASTERISK path at the top of this script. Exiting..."
+    exit 1
 fi
 
 # function to disconnect outbound links
 disconnect_outbound_links () {
-    local OUTBOUNDLINKS=`$ASTERISK -rx "rpt lstats $NODE1" | grep "OUT" | awk {'print $1'}`
+    local OUTBOUNDLINKS=`"$ASTERISK" -rx "rpt lstats $NODE1" | grep "OUT" | awk {'print $1'}`
     if [[ -z "$OUTBOUNDLINKS" ]] ; then
         echo "... None found."
     else
         echo ": $OUTBOUNDLINKS"
         for i in $OUTBOUNDLINKS
         do
-            $ASTERISK -rx "rpt cmd $NODE1 ilink 11 $i" &> /dev/null
+            "$ASTERISK" -rx "rpt cmd $NODE1 ilink 11 $i" &> /dev/null
         done
     fi
 }
 
 # Function to check if the specified link is connected
 link_status () {
-    local LSTATS=`$ASTERISK -rx "rpt lstats $LOCALNODE" | grep $TEMPORARY_LINK`
+    local LSTATS=`"$ASTERISK" -rx "rpt lstats $LOCALNODE" | grep "$TEMPORARY_LINK"`
     if [[ -z "$LSTATS" ]] ; then
         echo "Warning: Link $TEMPORARY_LINK is not connected to $LOCALNODE."
     else
-        echo $LSTATS
+        echo "$LSTATS"
     fi
 }
 
-# Function to get total TX time since initilization in seconds
+# Function to get total TX time since initilization in seconds. Echoes an empty string if the value couldn't be read.
 get_txtime_seconds () {
-    TXTIME=`$ASTERISK -rx "rpt stats $LOCALNODE" | grep -i 'TX time since system initialization'| awk '{print $(NF)}'`
+    TXTIME=`"$ASTERISK" -rx "rpt stats $LOCALNODE" | grep -i 'TX time since system initialization'| awk '{print $(NF)}'`
+    if [[ -z "$TXTIME" ]]; then
+        return
+    fi
     TXINT=${TXTIME%.*}
     TXSECONDS=`echo "$TXINT" | awk -F: '{ print ($1 * 3600) + ($2 * 60) + $3 }'`
-    echo $TXSECONDS
+    if [[ "$TXSECONDS" =~ ^[0-9]+$ ]]; then
+        echo "$TXSECONDS"
+    fi
 }
 
 seconds_to_timestamp () {
@@ -129,7 +142,7 @@ seconds_to_timestamp () {
 
 # Function to disconnect from a link
 link_disconnect () {
-    $ASTERISK -rx "rpt cmd $LOCALNODE ilink 11 $TEMPORARY_LINK" &> /dev/null
+    "$ASTERISK" -rx "rpt cmd $LOCALNODE ilink 11 $TEMPORARY_LINK" &> /dev/null
     sleep 1 & wait $!
     announce_link disconnect
 }
@@ -138,7 +151,7 @@ link_disconnect () {
 link_connect() {
     announce_link connect
     sleep 5 & wait $!
-    $ASTERISK -rx "rpt cmd $LOCALNODE ilink 13 $TEMPORARY_LINK" &> /dev/null
+    "$ASTERISK" -rx "rpt cmd $LOCALNODE ilink 13 $TEMPORARY_LINK" &> /dev/null
 }
 
 
@@ -152,13 +165,17 @@ announce_link() {
             AUDIO_FILE="/etc/asterisk/local/node-$ACTION"
         fi
 
-        $ASTERISK -rx "rpt localplay $NODE1 $AUDIO_FILE" &> /dev/null
+        "$ASTERISK" -rx "rpt localplay $NODE1 $AUDIO_FILE" &> /dev/null
     fi
 }
 
 # Get tx time from asterisk and write it to both variables
 LASTTXTIME=$(get_txtime_seconds)
-CURRENTTXTIME=$(get_txtime_seconds)
+if [[ -z "$LASTTXTIME" ]]; then
+    echo "Could not read TX time from Asterisk (\"$ASTERISK -rx 'rpt stats $LOCALNODE'\"). Check that Asterisk is running and that the local node ID ($LOCALNODE) is correct. Exiting..."
+    exit 1
+fi
+CURRENTTXTIME=$LASTTXTIME
 LINK_TIMER_START=`date +%s`
 INACTIVE_MINUTES=0
 
@@ -172,28 +189,39 @@ seconds_to_minutes() {
     echo `echo "$1 / 60" | bc`
 }
 
-
 echo_date "Monitoring temporary transceive link: $TEMPORARY_LINK $TEMPORARY_LINK_INFO"
-echo_date "The link will automatically disconnect after $LINK_TIME minutes at `date -d \"$LINK_TIME minutes\" +'%H:%M'` OR after $INACTIVITY_ALLOWANCE minutes of inactivity."
+
+if [ "$LINK_TIME" = 0 ]; then
+    echo_date "Link duration set to 0 (infinite). Announcing link, connecting, then exiting linkmon."
+else
+    echo_date "The link will automatically disconnect after $LINK_TIME minutes at `date -d \"$LINK_TIME minutes\" +'%H:%M'` OR after $INACTIVITY_ALLOWANCE minutes of inactivity."
+fi
+
 echo
 echo_date "Disconnecting existing outbound links$(disconnect_outbound_links)"
 echo_date "Establishing connection to: $TEMPORARY_LINK..."
 link_connect
 sleep 1 & wait $!
 echo_date "Link Information: $(link_status)"
+
+if [ "$LINK_TIME" = 0 ]; then
+    echo_date "Infinite connection established. Linkmon shutting down..."
+    exit
+fi
+
 echo
-echo_date "Current TX time for Node $LOCALNODE: $(seconds_to_timestamp $CURRENTTXTIME)"
+echo_date "Current TX time for Node $LOCALNODE: $(seconds_to_timestamp "$CURRENTTXTIME")"
 echo_date "Sleeping $SLEEP_TIME seconds..."
 
-sleep $SLEEP_TIME & wait $!
+sleep "$SLEEP_TIME" & wait $!
 
 while [[ "$CURRENTTXTIME" -ge "$LASTTXTIME" || "$INACTIVE_MINUTES" -lt "$INACTIVITY_ALLOWANCE" ]]
 do
-    CURRENTTXTIME=$(get_txtime_seconds)
+    NEWTXTIME=$(get_txtime_seconds)
 
     LINK_TIMER_NOW=`date +%s`
     LINK_TIMER_SECONDS=$((LINK_TIMER_NOW-LINK_TIMER_START))
-    LINK_TIMER_MINUTES=$(seconds_to_minutes $LINK_TIMER_SECONDS)
+    LINK_TIMER_MINUTES=$(seconds_to_minutes "$LINK_TIMER_SECONDS")
 
     if [ "$LINK_TIMER_MINUTES" -ge "$LINK_TIME" ]; then
         echo_date "Link Timer exceeded: $LINK_TIMER_MINUTES of $LINK_TIME minutes. Disconnecting link $TEMPORARY_LINK."
@@ -201,22 +229,28 @@ do
         break
     fi
 
+    if [[ -z "$NEWTXTIME" ]]; then
+        echo_date "Warning: could not read TX time from Asterisk this cycle. Retrying in $SLEEP_TIME seconds..."
+        sleep "$SLEEP_TIME" & wait $!
+        continue
+    fi
+    CURRENTTXTIME=$NEWTXTIME
+
     if [ "$CURRENTTXTIME" -gt "$LASTTXTIME" ]; then
-        echo_date "TX time increasing: $(seconds_to_timestamp CURRENTTXTIME) > $(seconds_to_timestamp $LASTTXTIME). Link Timer: $LINK_TIMER_MINUTES of $LINK_TIME minutes. Sleeping $SLEEP_TIME seconds..."
+        echo_date "TX time increasing: $(seconds_to_timestamp "$CURRENTTXTIME") > $(seconds_to_timestamp "$LASTTXTIME"). Link Timer: $LINK_TIMER_MINUTES of $LINK_TIME minutes. Sleeping $SLEEP_TIME seconds..."
         LASTTXTIME=$CURRENTTXTIME
-        CURRENTTXTIME=$(get_txtime_seconds)
         if [[ "$RESET_ON_TX" -eq 1 ]]; then
         # Reset the inactive minutes to 0 on every tx timer increase
             INACTIVE_MINUTES=0
         fi
-        sleep $SLEEP_TIME & wait $!
+        sleep "$SLEEP_TIME" & wait $!
     elif [ "$CURRENTTXTIME" -eq "$LASTTXTIME" ]; then
         ((INACTIVE_MINUTES++))
         if [ "$INACTIVE_MINUTES" -lt "$INACTIVITY_ALLOWANCE" ]; then
-            echo_date "TX time not increasing: $(seconds_to_timestamp $CURRENTTXTIME) = $(seconds_to_timestamp $LASTTXTIME). $INACTIVE_MINUTES of $INACTIVITY_ALLOWANCE minute inactivity allowance."
-            sleep $SLEEP_TIME & wait $!
+            echo_date "TX time not increasing: $(seconds_to_timestamp "$CURRENTTXTIME") = $(seconds_to_timestamp "$LASTTXTIME"). $INACTIVE_MINUTES of $INACTIVITY_ALLOWANCE minute inactivity allowance."
+            sleep "$SLEEP_TIME" & wait $!
         else
-            echo_date "TX time not increasing: $(seconds_to_timestamp $CURRENTTXTIME) = $(seconds_to_timestamp $LASTTXTIME). Disconnecting link $TEMPORARY_LINK."
+            echo_date "TX time not increasing: $(seconds_to_timestamp "$CURRENTTXTIME") = $(seconds_to_timestamp "$LASTTXTIME"). Disconnecting link $TEMPORARY_LINK."
             link_disconnect
             break
         fi
@@ -224,7 +258,7 @@ do
 done
 
 if [ "$CURRENTTXTIME" -lt "$LASTTXTIME" ]; then
-    echo_date "TX time decreased: $(seconds_to_timestamp $CURRENTTXTIME) < $(seconds_to_timestamp $LASTTXTIME). This shouldn't happen. Disconnecting link $TEMPORARY_LINK and bailing..."
+    echo_date "TX time decreased: $(seconds_to_timestamp "$CURRENTTXTIME") < $(seconds_to_timestamp "$LASTTXTIME"). This shouldn't happen. Disconnecting link $TEMPORARY_LINK and bailing..."
     link_disconnect
     exit
 fi
