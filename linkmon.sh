@@ -76,6 +76,7 @@ fi
 
 if [ -z "$3" ]; then
     if [ -f "$ALLSTARENV" ] ; then
+        # shellcheck source=/dev/null
         source "$ALLSTARENV"
         LOCALNODE="$NODE1"
     else
@@ -101,7 +102,8 @@ fi
 
 # function to disconnect outbound links
 disconnect_outbound_links () {
-    local OUTBOUNDLINKS=`"$ASTERISK" -rx "rpt lstats $NODE1" | grep "OUT" | awk {'print $1'}`
+    local OUTBOUNDLINKS
+    OUTBOUNDLINKS=`"$ASTERISK" -rx "rpt lstats $NODE1" | grep "OUT" | awk '{print $1}'`
     if [[ -z "$OUTBOUNDLINKS" ]] ; then
         echo "... None found."
     else
@@ -115,7 +117,8 @@ disconnect_outbound_links () {
 
 # Function to check if the specified link is connected
 link_status () {
-    local LSTATS=`"$ASTERISK" -rx "rpt lstats $LOCALNODE" | grep "$TEMPORARY_LINK"`
+    local LSTATS
+    LSTATS=`"$ASTERISK" -rx "rpt lstats $LOCALNODE" | grep "$TEMPORARY_LINK"`
     if [[ -z "$LSTATS" ]] ; then
         echo "Warning: Link $TEMPORARY_LINK is not connected to $LOCALNODE."
     else
@@ -181,12 +184,12 @@ INACTIVE_MINUTES=0
 
 # Function to echo to console with the datetime prepended
 echo_date () {
-    echo "[$(date '+%m/%d/%Y %H:%M:%S')] "$1""
+    echo "[$(date '+%m/%d/%Y %H:%M:%S')] $1"
 }
 
 # Function to convert seconds to minutes
 seconds_to_minutes() {
-    echo `echo "$1 / 60" | bc`
+    echo $(( $1 / 60 ))
 }
 
 echo_date "Monitoring temporary transceive link: $TEMPORARY_LINK $TEMPORARY_LINK_INFO"
