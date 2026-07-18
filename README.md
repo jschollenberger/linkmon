@@ -1,5 +1,7 @@
 # linkmon
+[![ShellCheck](https://github.com/jschollenberger/allstar-scripts/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/jschollenberger/allstar-scripts/actions/workflows/shellcheck.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+![Bash](https://img.shields.io/badge/Shell-Bash-4EAA25?logo=gnubash&logoColor=white)
 
 **Link management utility for Allstar**
 
